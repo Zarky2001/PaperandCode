@@ -25,7 +25,7 @@ from losses import *
 from tensorboardX import SummaryWriter
 
 # tensorboard address
-# tensorboard --logdir  /home/zy/pycharm/project/BKD/BKD_a/checkpoint/writerTensor/Cifar/logger+ time.strftime("%H%M%S")
+# tensorboard --logdir  /home/zy/pycharm/project/BKD/BKD_a/checkpoint/writerTensor/Cifar/logger
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -77,7 +77,7 @@ parser.add_argument('--root_log', type=str, default='teacher_log')
 parser.add_argument('--root_model', type=str, default='teacher_checkpoint')
 best_acc1 = 0
 
-logdir = 'checkpoint/writerTensor/Cifar/logger/TeatureAccuracy/Baseline'
+logdir = 'checkpoint/writerTensor/Cifar/logger/TeatureAccuracy/Baseline'+ time.strftime("%H%M%S")
 writerTensor = SummaryWriter(logdir)
 title = f'Validate/Accuracy/BKD'
 
