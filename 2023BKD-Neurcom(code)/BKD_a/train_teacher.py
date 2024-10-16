@@ -25,8 +25,7 @@ from losses import *
 from tensorboardX import SummaryWriter
 
 # tensorboard address
-# tensorboard --logdir  /home/zy/pycharm/project/BKD/BKD_a/checkpoint/writerTensor/Cifar/logger
-
+# tensorboard --logdir  /home/zy/pycharm/project/BKD/BKD_a/checkpoint/writerTensor/Cifar/logger+ time.strftime("%H%M%S")
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
