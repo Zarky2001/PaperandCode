@@ -83,7 +83,7 @@ parser.add_argument('--alpha', default=1.0, type=float, metavar='M',
 parser.add_argument('--model_dir', type=str, default=None)
 best_acc1 = 0
 
-logdir = 'checkpoint/writerTensor/Cifar/logger/StudentAccuracy/Baseline'
+logdir = 'checkpoint/writerTensor/Cifar/logger/StudentAccuracy/Baseline'+ time.strftime("%H%M%S")
 writerTensor = SummaryWriter(logdir)
 title = f'Validate/Accuracy/BKD'
 
