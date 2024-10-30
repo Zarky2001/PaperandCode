@@ -6,15 +6,18 @@ from utils import inf_loop, MetricTracker, load_state_dict, rename_parallel_stat
 import model.model as module_arch
 import pdb
 from tensorboardX import SummaryWriter
+from sklearn.metrics import confusion_matrix
 import time
 
 # tensorboard address
-# tensorboard --logdir  /home/zy/pycharm/project/BKD/BKD_a/checkpoint/writerTensor/Cifar/logger
-
+# tensorboard --logdir /home/zy/pycharm/project/BKD/PaperandCode_test1/2023MDCS/MDCS_a/checkpoint/writerTensor/Cifar/logger
 logdir = 'checkpoint/writerTensor/Cifar/logger/Accuracy/Baseline' + time.strftime("%H%M%S")
 writerTensor = SummaryWriter(logdir)
 title = f'Validate/Accuracy/MDCS'
 
+logdirclass = 'checkpoint/writerTensor/Cifar/logger/ClassAccuracy/Baseline'+ time.strftime("%H%M%S")
+writerTensorclass = SummaryWriter(logdirclass)
+titleclass = f'Validate/ClassAccuracy/BKD'
 
 class Trainer(BaseTrainer):
 
@@ -30,7 +33,14 @@ class Trainer(BaseTrainer):
         self.add_extra_info = config._config.get('add_extra_info', False)
         print("self.add_extra_info",self.add_extra_info)
 
+        self.num_classes = config._config['arch']['args'].get('num_classes', 100)
+        print(self.num_classes)
+
         self.data_loader = data_loader
+
+        # for class_id, count in enumerate(cls_num_list):
+        #     print(f"类别 {class_id}: {count} 张")
+
         if len_epoch is None:
             # epoch-based training
             self.len_epoch = len(self.data_loader )
@@ -105,7 +115,11 @@ class Trainer(BaseTrainer):
         all_lab = []
         all_prb = []
         all_lgt = []
-        agent_weight,loss_weight = self.get_agent_weight(epoch)        
+        agent_weight, loss_weight = self.get_agent_weight(epoch)
+
+        # Add this before the training loop
+        class_sample_counts_train = np.zeros(self.num_classes)
+
         #train_cls_num_list = np.array(env1_loader.cls_num_list)
         for batch_idx, data in enumerate(self.data_loader):
         #for batch_idx, (data, data2) in enumerate(zip(env1_loader, env2_loader)):
@@ -116,11 +130,11 @@ class Trainer(BaseTrainer):
 
             #data2, target2  ,index2 = data2
             #data2, target2  = data2.to(self.device), target2.to(self.device) 
- 
+
             data = torch.cat([view1, view2], dim=0).cuda()
             target = torch.cat([target, target], dim=0).cuda()
- 
-            #indexs = torch.cat([index1, index2], dim=0).cuda()
+
+        #indexs = torch.cat([index1, index2], dim=0).cuda()
            
             self.optimizer.zero_grad()
 
@@ -201,25 +215,6 @@ class Trainer(BaseTrainer):
             if batch_idx == self.len_epoch:
                 break
         log = self.train_metrics.result()
-         
-        # save env score
-        '''
-        env_score_memo = {}
-        update_milestones = [ 260,  280]
-        if epoch in update_milestones:
-                # update env mask
-                self.all_ind = torch.cat(all_ind, dim=0)
-                self.all_lab = torch.cat(all_lab, dim=0)
-                self.all_prb = torch.cat(all_prb, dim=0)
-                self.all_lgt = torch.cat(all_lgt, dim=0)
-
-                # save env_score
-                env_score_memo['label_{}'.format(epoch)] = self.all_lab.tolist()
-                env_score_memo['prob_{}'.format(epoch)] = self.all_prb.tolist()
-                env_score_memo['idx_{}'.format(epoch)] = self.all_ind.tolist()
-
-                self.update_env_by_score(env1_loader, env2_loader, total_image)            
-        '''
 
         if self.do_validation:
             val_log = self._valid_epoch(epoch)
@@ -239,6 +234,8 @@ class Trainer(BaseTrainer):
             log.update({"CURTIME---Maximum validation accuracy---": f"{self.max_val_accuracy:.4f}"})
 
             writerTensor.add_scalar(title, current_val_accuracy, epoch)
+
+
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
@@ -327,31 +324,78 @@ class Trainer(BaseTrainer):
 
     def _valid_epoch(self, epoch):
         """
-        Validate after training an epoch
+        Validate after training an epoch, with accuracy calculation for few, medium, and many categories.
 
         :param epoch: Integer, current training epoch.
-        :return: A log that contains information about validation
+        :return: A log that contains information about validation, including per-class and grouped accuracy.
         """
         self.model.eval()
         self.valid_metrics.reset()
+        num_classes = self.num_classes
+        cls_num_list = self.data_loader.print_class_counts()
+        # Initialize predictions and targets storage
+        all_preds = []
+        all_targets = []
+
         with torch.no_grad():
-           
             for batch_idx, (data, target) in enumerate(self.valid_data_loader):
                 data, target = data.to(self.device), target.to(self.device)
                 output = self.model(data)
+
                 if isinstance(output, dict):
                     output = output["output"]
-                loss = self.criterion(output, target)
 
+                loss = self.criterion(output, target)
                 self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
                 self.valid_metrics.update('loss', loss.item())
+
+                preds = torch.argmax(output, dim=1)
+                all_preds.append(preds.cpu().numpy())
+                all_targets.append(target.cpu().numpy())
+
                 for met in self.metric_ftns:
                     self.valid_metrics.update(met.__name__, met(output, target, return_length=True))
+
                 self.writer.add_image('input', make_grid(data.cpu(), nrow=8, normalize=True))
 
-        # add histogram of model parameters to the tensorboard
+        # Flatten the predictions and targets
+        all_preds = np.concatenate(all_preds)
+        all_targets = np.concatenate(all_targets)
+
+        # Compute confusion matrix
+        conf_matrix = confusion_matrix(all_targets, all_preds, labels=np.arange(num_classes))
+
+        # Calculate per-class accuracy
+        per_class_accuracy = conf_matrix.diagonal() / conf_matrix.sum(axis=1)
+
+        # Print or log the per-class accuracy
+        out_cls_acc = '%s Class Accuracy: %s' % (
+            'Validation',
+            (np.array2string(per_class_accuracy, separator=',', formatter={'float_kind': lambda x: "%.3f" % x})))
+        print(out_cls_acc)
+
+        # Classify classes as few, medium, and many based on sample counts
+        few_classes = [i for i, count in enumerate(cls_num_list) if count < 20]
+        many_classes = [i for i, count in enumerate(cls_num_list) if count > 100]
+        medium_classes = [i for i, count in enumerate(cls_num_list) if 20 <= count <= 100]
+
+        # Calculate accuracy for each group
+        few_acc = np.mean([per_class_accuracy[i] for i in few_classes])
+        medium_acc = np.mean([per_class_accuracy[i] for i in medium_classes])
+        many_acc = np.mean([per_class_accuracy[i] for i in many_classes])
+
+        print(f"Many-shot Class Accuracy: {many_acc:.3f}")
+        print(f"Medium-shot Class Accuracy: {medium_acc:.3f}")
+        print(f"Few-shot Class Accuracy: {few_acc:.3f}")
+
+        if epoch == 199:
+            for i, acc in enumerate(per_class_accuracy):
+                writerTensorclass.add_scalar(titleclass, acc, i)  # Recording for each class
+
+        # Add histogram of model parameters to Tensorboard
         for name, p in self.model.named_parameters():
             self.writer.add_histogram(name, p, bins='auto')
+
         return self.valid_metrics.result()
 
     def _progress(self, batch_idx):
