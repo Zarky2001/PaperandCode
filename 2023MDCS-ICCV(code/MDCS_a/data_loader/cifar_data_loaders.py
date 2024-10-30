@@ -194,6 +194,11 @@ class ImbalanceCIFAR100DataLoader(DataLoader):
         # If you want to validate:
         return DataLoader(dataset=self.val_dataset, **self.init_kwargs)
 
+    def print_class_counts(self):
+        # print("每个类别的样本数量:")
+        # for class_id, count in enumerate(self.cls_num_list):
+        #     print(f"类别 {class_id}: {count} 张")
+        return self.cls_num_list
 
 
 class ImbalanceCIFAR10DataLoader(DataLoader):
